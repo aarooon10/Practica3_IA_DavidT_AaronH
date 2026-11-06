@@ -32,8 +32,7 @@ class HouseFeatures(BaseModel):
 
 @app.get("/")
 def health():
-    """Health-check: confirma que el servicio está funcionando."""
-    return {"status": "ok"}
+    return {"status": "ok", "autores": "David Tella, Aaron Hernández P3"}
 
 
 @app.post("/predict")
