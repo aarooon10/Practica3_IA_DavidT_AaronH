@@ -3,5 +3,5 @@ uvicorn
 joblib
 scikit-learn
 pandas
-streamlit
 requests
+streamlit
