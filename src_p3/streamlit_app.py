@@ -13,7 +13,7 @@ a dólares y la muestra.
 Dónde está cada apartado:
     a) Conexión ............. TODO 0: URL de la API; TODO 1: la petición POST
     b) Datos de entrada ..... TODO 2: find_missing()
-    c) dendritic de salida .. TODO 3: format_price(); TODO 4: mostrar el precio
+    c) Datos de salida ...... TODO 3: format_price(); TODO 4: mostrar el precio
     d) Interfaz ............. TODO 6: campo de número de habitaciones
     e) Control de errores ... TODO 5a: fallo de comunicación; TODO 5b: respuesta de error
        (la documentación de la API va en el README)
@@ -31,7 +31,7 @@ logger = logging.getLogger("app")
 AUTORES = "David Tella, Aaron Hernandez"
 
 # TODO 0 (apartado a): URL pública de tu API en Render (sin barra final).
-API_URL = "https://practica3-ia-davidt-aaronh.onrender.com/"
+API_URL = "https://practica3-ia-davidt-aaronh.onrender.com"
 TIMEOUT = 90
 
 # Las 8 variables que necesita el modelo.
@@ -118,17 +118,50 @@ if st.button("Estimar precio"):
             # TODO 1 (apartado a): petición POST al endpoint /predict
             response = requests.post(api_url + "/predict", json=payload, timeout=TIMEOUT)
         elapsed_ms = (time.perf_counter() - start) * 1000
+    # TODO 5a (apartado e): mensajes claros para cada fallo de comunicación
+    except requests.Timeout as exc:
+        logger.error("Timeout con %s: %s", api_url, exc)
+        st.error(
+            f"La API no respondió en {TIMEOUT} segundos. Si el servicio de Render "
+            "estaba dormido, espera un minuto y vuelve a intentarlo."
+        )
+    except requests.ConnectionError as exc:
+        logger.error("Fallo de conexión con %s: %s", api_url, exc)
+        st.error(
+            "No se pudo conectar con la API. Comprueba que la URL de la barra "
+            "lateral es correcta y que el servicio está activo en Render."
+        )
     except requests.RequestException as exc:
-        logger.error("Fallo de comunicación con %s: %s", api_url, exc)
-        # TODO 5a (apartado e): mensaje claro de error de red o comunicación
-        st.error("No se pudo establecer comunicación con la API. Comprueba tu conexión o que el servicio esté activo en Render.")
+        logger.error("Error en la petición a %s: %s", api_url, exc)
+        st.error("La petición a la API no es válida. Revisa la URL (debe empezar por https://).")
     else:
         logger.info("POST %s/predict -> HTTP %s en %.0f ms", api_url, response.status_code, elapsed_ms)
         if response.status_code == 200:
-            med_house_val = response.json()["MedHouseVal"]
+            try:
+                med_house_val = float(response.json()["MedHouseVal"])
+            except (ValueError, KeyError, TypeError):
+                logger.error("Respuesta inesperada: %s", response.text[:200])
+                st.error("La API respondió, pero con un formato inesperado. ¿Es correcta la URL?")
+                st.stop()
             # TODO 4 (apartados c y d): muestra el precio formateado y el valor crudo
             st.metric("Precio estimado", format_price(med_house_val))
             st.caption(f"Valor devuelto por la API (sin formatear): {med_house_val}")
+        # TODO 5b (apartado e): respuestas de error de la API con mensajes claros
+        elif response.status_code == 422:
+            try:
+                campos = [str(e["loc"][-1]) for e in response.json().get("detail", [])]
+            except (ValueError, KeyError, TypeError, IndexError):
+                campos = []
+            detalle = f" Campos con problemas: {', '.join(campos)}." if campos else ""
+            st.error(f"La API ha rechazado los datos enviados (error 422).{detalle}")
+        elif response.status_code == 404:
+            st.error(
+                "La dirección de la API no existe (error 404). Revisa que la URL "
+                "de la barra lateral apunta a tu servicio FastAPI."
+            )
+        elif response.status_code == 503:
+            st.error("El modelo todavía no está cargado en el servidor (error 503). Prueba en unos segundos.")
+        elif response.status_code >= 500:
+            st.error(f"Error interno del servidor de IA (error {response.status_code}). Inténtalo más tarde.")
         else:
-            # TODO 5b (apartado e): respuesta de error de la API (422, 500...)
-            st.error(f"Error de la API (Código HTTP {response.status_code}): {response.text}")
+            st.error(f"Respuesta inesperada de la API (código {response.status_code}).")
